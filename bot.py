@@ -20,12 +20,16 @@ from telegram.ext import (
 # 1. SOZLAMALAR
 # =========================
 
-load_dotenv(override=True)
+load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 MODEL = "openai/gpt-oss-20b"
+
+RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
+WEBHOOK_PATH = "telegram-webhook"
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -35,10 +39,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN .env faylida topilmadi!")
+    raise ValueError("BOT_TOKEN topilmadi!")
 
 if not GROQ_API_KEY:
-    raise ValueError("GROQ_API_KEY .env faylida topilmadi!")
+    raise ValueError("GROQ_API_KEY topilmadi!")
+
+if RENDER_EXTERNAL_URL and not WEBHOOK_SECRET:
+    raise ValueError("WEBHOOK_SECRET Render'da kiritilmagan!")
 
 client = Groq(api_key=GROQ_API_KEY)
 
@@ -55,23 +62,12 @@ VAZIFANG:
 - Kreativ va tabiiy o'zbek tilida yoz.
 - 1 yoki 2 jumladan oshirma.
 
-MISOLLAR:
-
-Xabar: Men zo'rman.
-Javob: Zo'rligingni reklama qilishga usta ekansan, endi natijasini ham ko'rsak bo'ladimi? 😂
-
-Xabar: Men dangasaman.
-Javob: Dangasalik bo'yicha chempion bo'lsang kerak, medalni olishga ham erinib qolma. 😂
-
-Xabar: Nima gap?
-Javob: Hammasi joyida, faqat sening savollaring hali ham beta-versiyada. 😂
-
 QOIDALAR:
 - Faqat o'zbek tilida yoz.
 - Har safar yangi hazil top.
 - Do'stona hazil qil, kamsitma.
-- Tashqi ko'rinish, millat, din, nogironlik va boshqa nozik
-  xususiyatlarni masxara qilma.
+- Tashqi ko'rinish, millat, din, nogironlik
+  va boshqa nozik xususiyatlarni masxara qilma.
 - Haqorat va tahdid ishlatma.
 - Faqat tayyor javobni yoz.
 """
@@ -81,7 +77,6 @@ QOIDALAR:
 # =========================
 
 async def generate_roast(message: str) -> str:
-
     try:
         response = await asyncio.wait_for(
             asyncio.to_thread(
@@ -118,7 +113,6 @@ async def generate_roast(message: str) -> str:
 
     return "😅 Hozir hazil generatorim ishlamayapti. Keyinroq urinib ko'r!"
 
-
 # =========================
 # 4. START
 # =========================
@@ -127,14 +121,12 @@ async def start(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
     await update.message.reply_text(
         "😈 Assalomu alaykum! Men RoastUzBot!\n\n"
         "Menga istalgan gapni yozing.\n"
         "Men sizga kreativ roast bilan javob beraman!\n\n"
         "🔥 Qani, boshladik!"
     )
-
 
 # =========================
 # 5. HELP
@@ -144,7 +136,6 @@ async def help_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
     await update.message.reply_text(
         "😈 ROASTUZBOT YORDAM\n\n"
         "✍️ Istalgan xabarni yozing.\n\n"
@@ -152,7 +143,6 @@ async def help_command(
         "/help — Yordam\n"
         "/clear — Suhbatni tozalash"
     )
-
 
 # =========================
 # 6. CLEAR
@@ -162,12 +152,10 @@ async def clear_history(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
     await update.message.reply_text(
         "🧹 Yangi sahifa ochildi!\n"
         "Endi yangi hazillar boshlanadi. 😈"
     )
-
 
 # =========================
 # 7. XABARLARNI QABUL QILISH
@@ -177,7 +165,6 @@ async def handle_message(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
     if not update.message or not update.message.text:
         return
 
@@ -186,14 +173,11 @@ async def handle_message(
     if not user_message:
         return
 
-    await update.message.chat.send_action(
-        ChatAction.TYPING
-    )
+    await update.message.chat.send_action(ChatAction.TYPING)
 
     answer = await generate_roast(user_message)
 
     await update.message.reply_text(answer)
-
 
 # =========================
 # 8. XATOLARNI USHLASH
@@ -203,19 +187,16 @@ async def error_handler(
     update: object,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
     logger.error(
         "Telegram bot xatosi:",
         exc_info=context.error
     )
-
 
 # =========================
 # 9. BOTNI ISHGA TUSHIRISH
 # =========================
 
 def main():
-
     app = (
         Application.builder()
         .token(BOT_TOKEN)
@@ -235,9 +216,22 @@ def main():
 
     app.add_error_handler(error_handler)
 
-    print("😈 RoastUzBot + Groq AI ishga tushdi!")
+    print("😈 RoastUzBot + Groq AI ishga tushmoqda!")
 
-    app.run_polling()
+    if RENDER_EXTERNAL_URL:
+        print("🌐 Render webhook rejimi!")
+
+        app.run_webhook(
+            listen="0.0.0.0",
+            port=int(os.environ.get("PORT", "10000")),
+            url_path=WEBHOOK_PATH,
+            webhook_url=f"{RENDER_EXTERNAL_URL}/{WEBHOOK_PATH}",
+            secret_token=WEBHOOK_SECRET,
+            drop_pending_updates=True,
+        )
+    else:
+        print("💻 Mahalliy polling rejimi!")
+        app.run_polling()
 
 
 if __name__ == "__main__":
